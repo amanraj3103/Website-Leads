@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.env
+daily_leads.json
+start.sh
+start.bat
+README.md
+GOOGLE_SHEETS_SETUP.md
+*.log
+
