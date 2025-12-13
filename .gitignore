@@ -5,3 +5,4 @@ __pycache__/
 daily_leads.json
 .env
 google_credentials.json
+.vercel
