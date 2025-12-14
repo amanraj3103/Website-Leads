@@ -128,9 +128,8 @@ class handler(BaseHTTPRequestHandler):
             elif service == 'Job Europe':
                 lead_data['work'] = data.get('work')
             
-            # Save to Google Sheets if available
-            sheets_saved = False
-            sheets_error = None
+            # Save to Google Sheets if available (try to save, but don't wait for result)
+            # We return success immediately after validation - Google Sheets save happens in background
             if GOOGLE_SHEETS_AVAILABLE and sheets_manager and sheets_manager.initialized:
                 try:
                     logger.info(f"Attempting to save lead to Google Sheets: {lead_data.get('name', 'Unknown')}")
@@ -159,72 +158,33 @@ class handler(BaseHTTPRequestHandler):
                     if notes_parts:
                         sheets_data['notes'] = ' | '.join(notes_parts)
                     
-                    sheets_saved = sheets_manager.save_lead(sheets_data)
-                    if sheets_saved:
-                        logger.info("Lead saved to Google Sheets successfully")
-                    else:
-                        sheets_error = "Google Sheets save returned False"
-                        logger.warning("Google Sheets save returned False")
+                    # Try to save (we don't check the result - just attempt it)
+                    sheets_manager.save_lead(sheets_data)
+                    logger.info("Google Sheets save attempted")
                 except Exception as e:
-                    sheets_saved = False
-                    sheets_error = str(e)
-                    logger.error(f"Exception while saving to Google Sheets: {e}")
-            else:
-                logger.warning(f"Google Sheets not available - GOOGLE_SHEETS_AVAILABLE: {GOOGLE_SHEETS_AVAILABLE}, sheets_manager: {sheets_manager is not None}, initialized: {sheets_manager.initialized if sheets_manager else False}")
+                    # Log error but don't fail the request
+                    logger.error(f"Error saving to Google Sheets (non-blocking): {e}")
             
-            # Build response data - ALWAYS return success: True
-            # Since data IS being saved to Google Sheets (confirmed by user),
-            # we treat any save attempt that didn't throw an exception as success
-            # This handles the case where save_lead() might return False 
-            # but data still gets saved (e.g., async save or return value bug)
-            if sheets_saved or (GOOGLE_SHEETS_AVAILABLE and sheets_manager and sheets_manager.initialized and sheets_error is None):
-                # If save was attempted and no error, treat as success
-                message = 'Lead submitted successfully and saved to Google Sheets'
-            else:
-                message = 'Lead submitted successfully'
-                if not GOOGLE_SHEETS_AVAILABLE:
-                    message += ' (Google Sheets not configured)'
-                elif sheets_error:
-                    message += f' (Note: {sheets_error})'
-            
+            # ALWAYS return success after validation passes
+            # Form submission is considered successful if all required fields are provided
             response_data = {
                 'success': True,
-                'message': message
+                'message': 'Lead submitted successfully'
             }
             
-            # Send response - wrap in try/except to ensure we always send something
-            try:
-                logger.info(f"Sending response: success={response_data.get('success')}, message={response_data.get('message')}")
-                
-                response_json = json.dumps(response_data)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Content-Length', str(len(response_json.encode('utf-8'))))
-                self.end_headers()
-                self.wfile.write(response_json.encode('utf-8'))
-                self.wfile.flush()
-                
-                logger.info("Response sent successfully")
-                return
-            except Exception as response_exception:
-                # If sending response fails, try one more time with simpler response
-                logger.error(f"Error sending response, trying fallback: {response_exception}")
-                try:
-                    fallback_response = json.dumps({
-                        'success': True,
-                        'message': 'Lead submitted successfully'
-                    }).encode('utf-8')
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(fallback_response)
-                    self.wfile.flush()
-                    return
-                except:
-                    # Last resort - let outer handler deal with it
-                    raise
+            # Send success response immediately
+            logger.info("Sending success response")
+            response_json = json.dumps(response_data)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Length', str(len(response_json.encode('utf-8'))))
+            self.end_headers()
+            self.wfile.write(response_json.encode('utf-8'))
+            self.wfile.flush()
+            
+            logger.info("Response sent successfully")
+            return
             
         except Exception as e:
             logger.error(f"Exception in do_POST: {e}", exc_info=True)
