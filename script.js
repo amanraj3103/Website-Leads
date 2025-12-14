@@ -119,19 +119,31 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify(formData)
             });
             
-            const result = await response.json().catch(() => ({}));
+            const result = await response.json().catch((parseError) => {
+                console.error('Failed to parse JSON response:', parseError);
+                return {};
+            });
+            
+            console.log('API Response:', {
+                status: response.status,
+                ok: response.ok,
+                result: result
+            });
             
             if (!response.ok) {
+                console.error('Response not OK:', response.status, result);
                 throw new Error(result.error || `Server error: ${response.status}`);
             }
             
             // Check if the response indicates success
-            if (result.success === true) {
+            if (result.success === true || result.success === 'true') {
                 // Success
+                console.log('Success! Showing success message');
                 showMessage('success', '✅ Thank you! Your information has been submitted successfully. Our team will contact you within 24 hours.');
                 form.reset();
             } else {
-                // Response was OK but success is false
+                // Response was OK but success is false or missing
+                console.error('Response OK but success is not true:', result);
                 throw new Error(result.error || result.message || 'Failed to save lead data');
             }
             

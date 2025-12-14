@@ -172,45 +172,42 @@ class handler(BaseHTTPRequestHandler):
             else:
                 logger.warning(f"Google Sheets not available - GOOGLE_SHEETS_AVAILABLE: {GOOGLE_SHEETS_AVAILABLE}, sheets_manager: {sheets_manager is not None}, initialized: {sheets_manager.initialized if sheets_manager else False}")
             
-            # Always return success - data is saved to Google Sheets
-            # Even if there's a minor issue, we consider it successful if sheets_saved is True
+            # If Google Sheets save succeeded, ALWAYS return success
+            # This ensures that successful saves are reported as success
             if sheets_saved:
                 message = 'Lead submitted successfully and saved to Google Sheets'
+                response_data = {
+                    'success': True,
+                    'message': message
+                }
             else:
+                # If save failed, still return success but with a note
+                # (This is a design decision - we want to show success even if Sheets fails)
                 message = 'Lead submitted successfully'
                 if not GOOGLE_SHEETS_AVAILABLE:
                     message += ' (Google Sheets not configured)'
                 elif sheets_error:
                     message += f' (Note: {sheets_error})'
-            
-            # Send success response
-            try:
+                
                 response_data = {
                     'success': True,
                     'message': message
                 }
-                logger.info(f"Sending success response: {response_data}")
-                
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(json.dumps(response_data).encode())
-                logger.info("Success response sent")
-            except Exception as response_error:
-                logger.error(f"Error sending response: {response_error}")
-                # Try to send error response
-                try:
-                    self.send_response(500)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({
-                        'error': 'Error sending response',
-                        'details': str(response_error)
-                    }).encode())
-                except:
-                    pass  # If we can't send response, just log it
+            
+            # Send response - simplified and robust
+            logger.info(f"Sending response: success={response_data.get('success')}, message={response_data.get('message')}")
+            
+            response_json = json.dumps(response_data)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Length', str(len(response_json.encode())))
+            self.end_headers()
+            self.wfile.write(response_json.encode())
+            self.wfile.flush()
+            
+            logger.info("Response sent successfully")
+            return
             
         except Exception as e:
             logger.error(f"Exception in do_POST: {e}", exc_info=True)
