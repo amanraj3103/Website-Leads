@@ -17,13 +17,16 @@ except Exception as e:
 
 # Initialize Google Sheets if available
 if GOOGLE_SHEETS_AVAILABLE:
-    credentials_file = BASE_DIR / 'google_credentials.json'
     spreadsheet_id = os.getenv('GOOGLE_SPREADSHEET_ID')
+    credentials_file = BASE_DIR / 'google_credentials.json'
     
-    if credentials_file.exists() and spreadsheet_id:
+    # GoogleSheetsManager will automatically handle GOOGLE_CREDENTIALS_JSON_B64 env var
+    # Pass None to let it use the default path logic which checks env vars first
+    if spreadsheet_id:
         try:
+            # Pass None to use default path, which will check env vars first
             sheets_manager = GoogleSheetsManager(
-                credentials_file=str(credentials_file),
+                credentials_file=None,  # Will use default and check env vars
                 spreadsheet_id=spreadsheet_id
             )
         except Exception as e:
