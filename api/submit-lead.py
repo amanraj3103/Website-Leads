@@ -21,14 +21,23 @@ except Exception as e:
 sheets_manager = None
 if GOOGLE_SHEETS_AVAILABLE:
     spreadsheet_id = os.getenv('GOOGLE_SPREADSHEET_ID')
-    if spreadsheet_id:
+    credentials_b64 = os.getenv('GOOGLE_CREDENTIALS_JSON_B64')
+    if spreadsheet_id and credentials_b64:
         try:
             sheets_manager = GoogleSheetsManager(credentials_file=None, spreadsheet_id=spreadsheet_id)
-            if not (sheets_manager and sheets_manager.initialized):
+            if sheets_manager and hasattr(sheets_manager, 'initialized') and sheets_manager.initialized:
+                logger.info("Google Sheets initialized successfully")
+            else:
+                logger.warning("Google Sheets manager not properly initialized")
+                sheets_manager = None
                 GOOGLE_SHEETS_AVAILABLE = False
         except Exception as e:
+            logger.error(f"Error initializing Google Sheets: {e}", exc_info=True)
             sheets_manager = None
             GOOGLE_SHEETS_AVAILABLE = False
+    else:
+        logger.warning(f"Missing env vars - spreadsheet_id: {bool(spreadsheet_id)}, credentials_b64: {bool(credentials_b64)}")
+        GOOGLE_SHEETS_AVAILABLE = False
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -106,25 +115,29 @@ class handler(BaseHTTPRequestHandler):
             
             validation_passed = True
             
-            # Save to Google Sheets (non-blocking)
-            if GOOGLE_SHEETS_AVAILABLE and sheets_manager and sheets_manager.initialized:
-                try:
-                    sheets_data = {
-                        'user_id': '', 'service_type': service, 'place': data.get('place'),
-                        'name': data.get('name'), 'phone': data.get('phone'), 'email': data.get('email'),
-                        'documents': '', 'notes': ''
-                    }
-                    if service == 'Education India':
-                        sheets_data['notes'] = f"Place: {data.get('education_place')} | Course: {data.get('course')}"
-                    elif service == 'Education Abroad':
-                        sheets_data['notes'] = f"Country: {data.get('education_country')}"
-                    elif service == 'Job Europe':
-                        sheets_data['notes'] = f"Job Type: {data.get('work')}"
-                    sheets_manager.save_lead(sheets_data)
-                except Exception as e:
-                    logger.error(f"Google Sheets error: {e}")
+            # Save to Google Sheets (non-blocking - wrap in try/except to ensure no exceptions escape)
+            try:
+                if GOOGLE_SHEETS_AVAILABLE and sheets_manager and hasattr(sheets_manager, 'initialized') and sheets_manager.initialized:
+                    try:
+                        sheets_data = {
+                            'user_id': '', 'service_type': service, 'place': data.get('place'),
+                            'name': data.get('name'), 'phone': data.get('phone'), 'email': data.get('email'),
+                            'documents': '', 'notes': ''
+                        }
+                        if service == 'Education India':
+                            sheets_data['notes'] = f"Place: {data.get('education_place')} | Course: {data.get('course')}"
+                        elif service == 'Education Abroad':
+                            sheets_data['notes'] = f"Country: {data.get('education_country')}"
+                        elif service == 'Job Europe':
+                            sheets_data['notes'] = f"Job Type: {data.get('work')}"
+                        if hasattr(sheets_manager, 'save_lead'):
+                            sheets_manager.save_lead(sheets_data)
+                    except Exception as e:
+                        logger.error(f"Google Sheets save error (ignored): {e}")
+            except Exception as e:
+                logger.error(f"Google Sheets initialization check error (ignored): {e}")
             
-            # ALWAYS return success
+            # ALWAYS return success - no exceptions should prevent this
             self._send_success()
             
         except Exception as e:
