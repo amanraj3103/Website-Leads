@@ -3,6 +3,11 @@ import json
 import os
 import sys
 from pathlib import Path
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path for imports
 BASE_DIR = Path(__file__).parent.parent
@@ -11,17 +16,18 @@ sys.path.insert(0, str(BASE_DIR))
 try:
     from integrations.google_sheets import GoogleSheetsManager
     GOOGLE_SHEETS_AVAILABLE = True
+    logger.info("GoogleSheetsManager imported successfully")
 except Exception as e:
     GOOGLE_SHEETS_AVAILABLE = False
     sheets_manager = None
+    logger.error(f"Failed to import GoogleSheetsManager: {e}")
 
 # Initialize Google Sheets if available
+sheets_manager = None
 if GOOGLE_SHEETS_AVAILABLE:
     spreadsheet_id = os.getenv('GOOGLE_SPREADSHEET_ID')
-    credentials_file = BASE_DIR / 'google_credentials.json'
+    logger.info(f"GOOGLE_SPREADSHEET_ID: {'Found' if spreadsheet_id else 'Not found'}")
     
-    # GoogleSheetsManager will automatically handle GOOGLE_CREDENTIALS_JSON_B64 env var
-    # Pass None to let it use the default path logic which checks env vars first
     if spreadsheet_id:
         try:
             # Pass None to use default path, which will check env vars first
@@ -29,12 +35,19 @@ if GOOGLE_SHEETS_AVAILABLE:
                 credentials_file=None,  # Will use default and check env vars
                 spreadsheet_id=spreadsheet_id
             )
+            if sheets_manager and sheets_manager.initialized:
+                logger.info("Google Sheets manager initialized successfully")
+            else:
+                logger.warning("Google Sheets manager not initialized")
+                GOOGLE_SHEETS_AVAILABLE = False
         except Exception as e:
             sheets_manager = None
             GOOGLE_SHEETS_AVAILABLE = False
+            logger.error(f"Error initializing GoogleSheetsManager: {e}")
     else:
         sheets_manager = None
         GOOGLE_SHEETS_AVAILABLE = False
+        logger.warning("GOOGLE_SPREADSHEET_ID not found")
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -118,8 +131,9 @@ class handler(BaseHTTPRequestHandler):
             # Save to Google Sheets if available
             sheets_saved = False
             sheets_error = None
-            if GOOGLE_SHEETS_AVAILABLE and sheets_manager:
+            if GOOGLE_SHEETS_AVAILABLE and sheets_manager and sheets_manager.initialized:
                 try:
+                    logger.info(f"Attempting to save lead to Google Sheets: {lead_data.get('name', 'Unknown')}")
                     # Prepare data for Google Sheets
                     sheets_data = {
                         'user_id': '',
@@ -146,11 +160,17 @@ class handler(BaseHTTPRequestHandler):
                         sheets_data['notes'] = ' | '.join(notes_parts)
                     
                     sheets_saved = sheets_manager.save_lead(sheets_data)
-                    if not sheets_saved:
+                    if sheets_saved:
+                        logger.info("Lead saved to Google Sheets successfully")
+                    else:
                         sheets_error = "Google Sheets save returned False"
+                        logger.warning("Google Sheets save returned False")
                 except Exception as e:
                     sheets_saved = False
                     sheets_error = str(e)
+                    logger.error(f"Exception while saving to Google Sheets: {e}")
+            else:
+                logger.warning(f"Google Sheets not available - GOOGLE_SHEETS_AVAILABLE: {GOOGLE_SHEETS_AVAILABLE}, sheets_manager: {sheets_manager is not None}, initialized: {sheets_manager.initialized if sheets_manager else False}")
             
             # Always return success - data is saved to Google Sheets
             # Even if there's a minor issue, we consider it successful if sheets_saved is True
@@ -163,22 +183,46 @@ class handler(BaseHTTPRequestHandler):
                 elif sheets_error:
                     message += f' (Note: {sheets_error})'
             
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(json.dumps({
-                'success': True,
-                'message': message
-            }).encode())
+            # Send success response
+            try:
+                response_data = {
+                    'success': True,
+                    'message': message
+                }
+                logger.info(f"Sending success response: {response_data}")
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps(response_data).encode())
+                logger.info("Success response sent")
+            except Exception as response_error:
+                logger.error(f"Error sending response: {response_error}")
+                # Try to send error response
+                try:
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'Error sending response',
+                        'details': str(response_error)
+                    }).encode())
+                except:
+                    pass  # If we can't send response, just log it
             
         except Exception as e:
-            self.send_response(500)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(json.dumps({
-                'error': 'Internal server error',
-                'details': str(e)
-            }).encode())
+            logger.error(f"Exception in do_POST: {e}", exc_info=True)
+            try:
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'error': 'Internal server error',
+                    'details': str(e)
+                }).encode())
+            except Exception as response_error:
+                logger.error(f"Error sending error response: {response_error}")
 

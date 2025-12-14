@@ -119,16 +119,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify(formData)
             });
             
+            const result = await response.json().catch(() => ({}));
+            
             if (!response.ok) {
-                const result = await response.json().catch(() => ({}));
                 throw new Error(result.error || `Server error: ${response.status}`);
             }
             
-            const result = await response.json();
-            
-            // Success
-            showMessage('success', '✅ Thank you! Your information has been submitted successfully. Our team will contact you within 24 hours.');
-            form.reset();
+            // Check if the response indicates success
+            if (result.success === true) {
+                // Success
+                showMessage('success', '✅ Thank you! Your information has been submitted successfully. Our team will contact you within 24 hours.');
+                form.reset();
+            } else {
+                // Response was OK but success is false
+                throw new Error(result.error || result.message || 'Failed to save lead data');
+            }
             
             // Reset button
             submitBtn.disabled = false;
