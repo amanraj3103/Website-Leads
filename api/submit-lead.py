@@ -117,6 +117,7 @@ class handler(BaseHTTPRequestHandler):
             
             # Save to Google Sheets if available
             sheets_saved = False
+            sheets_error = None
             if GOOGLE_SHEETS_AVAILABLE and sheets_manager:
                 try:
                     # Prepare data for Google Sheets
@@ -145,16 +146,22 @@ class handler(BaseHTTPRequestHandler):
                         sheets_data['notes'] = ' | '.join(notes_parts)
                     
                     sheets_saved = sheets_manager.save_lead(sheets_data)
+                    if not sheets_saved:
+                        sheets_error = "Google Sheets save returned False"
                 except Exception as e:
                     sheets_saved = False
+                    sheets_error = str(e)
             
-            # Return success
+            # Always return success - data is saved to Google Sheets
+            # Even if there's a minor issue, we consider it successful if sheets_saved is True
             if sheets_saved:
                 message = 'Lead submitted successfully and saved to Google Sheets'
             else:
                 message = 'Lead submitted successfully'
                 if not GOOGLE_SHEETS_AVAILABLE:
                     message += ' (Google Sheets not configured)'
+                elif sheets_error:
+                    message += f' (Note: {sheets_error})'
             
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
