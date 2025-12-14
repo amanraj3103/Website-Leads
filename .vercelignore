@@ -8,4 +8,6 @@ start.bat
 README.md
 GOOGLE_SHEETS_SETUP.md
 *.log
+server.py
+google_credentials.json
 
