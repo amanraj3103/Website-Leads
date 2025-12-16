@@ -1,0 +1,7 @@
+[build-system]
+requires = []
+build-backend = ""
+
+[tool.vercel]
+runtime = "python3.9"
+
