@@ -133,3 +133,4 @@ If you encounter issues:
 2. Check GoDaddy's DNS help: https://www.godaddy.com/help
 3. Verify your DNS records match exactly what Vercel shows
 
+
